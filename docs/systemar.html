@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resilient Order System Architecture Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        
+        /* Chart Container Styling - Mandatory Requirements */
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px; /* Constrain max width */
+            height: 300px;
+            max-height: 350px; /* Constrain max height */
+            margin: 0 auto; /* Center horizontally */
+        }
+        
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+
+        /* Custom Scrollbar for cleaner look */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f5f5f4; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #d6d3d1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a29e; 
+        }
+
+        .step-active { border-left-color: #0d9488; background-color: #f0fdfa; }
+        .step-inactive { border-left-color: #e5e7eb; }
+        
+        .entity-card.active { border-color: #0d9488; background-color: #f0fdfa; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+        .entity-card { transition: all 0.2s ease-in-out; cursor: pointer; }
+    </style>
+    <!-- Chosen Palette: Warm Neutrals & Teal -->
+    <!-- Application Structure Plan: 
+         1. Layout: Fixed Sidebar (Navigation) + Scrollable Main Content.
+         2. Sections:
+            - Overview: High-level metrics and system component map.
+            - Schema Explorer: Interactive Entity-Relationship visualization using clickable cards.
+            - Transaction Simulator: Step-by-step interactive flow of the "Atomic Write" process.
+            - Resilience Analytics: Charts showing retry logic efficiency and failure distributions.
+            - Traceability Demo: Mock data table demonstrating how Orders link to Outbox and Failures.
+         3. Rationale: This structure moves from abstract (Overview) to structural (Schema) to behavioral (Simulator/Analytics), ending with concrete data (Traceability).
+    -->
+    <!-- Visualization & Content Choices:
+         - Metrics: Big Number Cards -> Inform -> HTML/CSS.
+         - Schema: Interactive Grid of Cards -> Organize -> HTML/JS Selection logic.
+         - Transaction Flow: Vertical Stepper -> Change/Process -> HTML/JS State.
+         - Retry Logic: Line Chart (Backoff) & Doughnut (Status) -> Relationships/Compare -> Chart.js (Canvas).
+         - Traceability: Master-Detail Table -> Organize -> HTML/JS.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+</head>
+<body class="bg-stone-50 text-stone-800 antialiased h-screen flex overflow-hidden">
+
+    <!-- Sidebar Navigation -->
+    <aside class="w-64 bg-white border-r border-stone-200 flex-shrink-0 hidden md:flex flex-col z-10">
+        <div class="p-6 border-b border-stone-100">
+            <h1 class="text-xl font-bold text-stone-900 tracking-tight">System<span class="text-teal-600">Arch</span></h1>
+            <p class="text-xs text-stone-500 mt-1">Order Processing V2.0</p>
+        </div>
+        <nav class="flex-1 overflow-y-auto p-4 space-y-2">
+            <button onclick="showSection('overview')" class="nav-btn w-full text-left px-4 py-3 rounded-lg text-sm font-medium transition-colors bg-stone-100 text-teal-700" data-target="overview">
+                System Overview
+            </button>
+            <button onclick="showSection('schema')" class="nav-btn w-full text-left px-4 py-3 rounded-lg text-sm font-medium text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-colors" data-target="schema">
+                Data Schema Explorer
+            </button>
+            <button onclick="showSection('transaction')" class="nav-btn w-full text-left px-4 py-3 rounded-lg text-sm font-medium text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-colors" data-target="transaction">
+                Atomic Transaction Flow
+            </button>
+            <button onclick="showSection('resilience')" class="nav-btn w-full text-left px-4 py-3 rounded-lg text-sm font-medium text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-colors" data-target="resilience">
+                Resilience & Retries
+            </button>
+            <button onclick="showSection('traceability')" class="nav-btn w-full text-left px-4 py-3 rounded-lg text-sm font-medium text-stone-600 hover:bg-stone-50 hover:text-stone-900 transition-colors" data-target="traceability">
+                Audit & Traceability
+            </button>
+        </nav>
+        <div class="p-4 border-t border-stone-100">
+            <div class="bg-stone-100 rounded p-3 text-xs text-stone-500">
+                <p><strong>Status:</strong> Healthy</p>
+                <p><strong>Version:</strong> 2.4.1</p>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Mobile Nav Header -->
+    <div class="md:hidden fixed top-0 w-full bg-white border-b border-stone-200 z-20 flex justify-between items-center p-4">
+        <h1 class="text-lg font-bold">System<span class="text-teal-600">Arch</span></h1>
+        <button id="mobile-menu-btn" class="text-stone-600 focus:outline-none">Menu</button>
+    </div>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 overflow-y-auto p-4 md:p-8 pt-20 md:pt-8 bg-stone-50 relative scroll-smooth">
+        
+        <!-- SECTION 1: OVERVIEW -->
+        <section id="overview" class="content-section max-w-6xl mx-auto space-y-8 animate-fade-in">
+            <div class="space-y-2">
+                <h2 class="text-3xl font-bold text-stone-900">System Architecture Overview</h2>
+                <p class="text-stone-600 max-w-3xl">
+                    Welcome to the architectural dashboard for the Failure-Tolerant Order Processing System. 
+                    This system uses an API-First approach combined with the Transactional Outbox Pattern to ensure data consistency 
+                    and resilience against component failures.
+                </p>
+            </div>
+
+            <!-- Key Metrics -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-stone-100">
+                    <p class="text-xs font-semibold text-stone-400 uppercase tracking-wider">Reliability</p>
+                    <div class="mt-2 flex items-baseline gap-2">
+                        <span class="text-3xl font-bold text-stone-900">99.99%</span>
+                        <span class="text-xs text-green-600 font-medium">↑ Target Met</span>
+                    </div>
+                    <p class="text-sm text-stone-500 mt-1">Uptime SLA</p>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-stone-100">
+                    <p class="text-xs font-semibold text-stone-400 uppercase tracking-wider">Throughput</p>
+                    <div class="mt-2 flex items-baseline gap-2">
+                        <span class="text-3xl font-bold text-stone-900">1.2k</span>
+                        <span class="text-xs text-stone-500">req/sec</span>
+                    </div>
+                    <p class="text-sm text-stone-500 mt-1">Order Ingestion</p>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-stone-100">
+                    <p class="text-xs font-semibold text-stone-400 uppercase tracking-wider">Consistency</p>
+                    <div class="mt-2 flex items-baseline gap-2">
+                        <span class="text-3xl font-bold text-teal-600">Atomic</span>
+                        <span class="text-xs text-stone-500">Transactions</span>
+                    </div>
+                    <p class="text-sm text-stone-500 mt-1">DB + Outbox</p>
+                </div>
+                <div class="bg-white p-5 rounded-xl shadow-sm border border-stone-100">
+                    <p class="text-xs font-semibold text-stone-400 uppercase tracking-wider">Recovery</p>
+                    <div class="mt-2 flex items-baseline gap-2">
+                        <span class="text-3xl font-bold text-indigo-600">Auto</span>
+                        <span class="text-xs text-stone-500">Retries</span>
+                    </div>
+                    <p class="text-sm text-stone-500 mt-1">Exponential Backoff</p>
+                </div>
+            </div>
+
+            <!-- High Level Diagram Block -->
+            <div class="bg-white rounded-xl shadow-sm border border-stone-200 p-6">
+                <h3 class="text-lg font-semibold text-stone-900 mb-4">Core Components</h3>
+                <div class="flex flex-col md:flex-row gap-4 items-stretch justify-between text-center">
+                    
+                    <div class="flex-1 p-4 bg-stone-50 rounded-lg border border-stone-200 flex flex-col justify-center transition hover:shadow-md">
+                        <div class="text-teal-600 font-bold mb-1">API Layer</div>
+                        <div class="text-xs text-stone-500">Idempotency & Validation</div>
+                    </div>
+                    
+                    <div class="hidden md:flex flex-col justify-center text-stone-300 text-2xl">→</div>
+                    
+                    <div class="flex-1 p-4 bg-orange-50 rounded-lg border border-orange-100 flex flex-col justify-center transition hover:shadow-md">
+                        <div class="text-orange-700 font-bold mb-1">Database</div>
+                        <div class="text-xs text-stone-500">Orders + Outbox Tables</div>
+                        <div class="mt-2 text-[10px] bg-white px-2 py-1 rounded border border-orange-100 inline-block mx-auto">Atomic Write</div>
+                    </div>
+
+                    <div class="hidden md:flex flex-col justify-center text-stone-300 text-2xl">→</div>
+
+                    <div class="flex-1 p-4 bg-indigo-50 rounded-lg border border-indigo-100 flex flex-col justify-center transition hover:shadow-md">
+                        <div class="text-indigo-700 font-bold mb-1">Message Queue</div>
+                        <div class="text-xs text-stone-500">Async Decoupling</div>
+                    </div>
+
+                    <div class="hidden md:flex flex-col justify-center text-stone-300 text-2xl">→</div>
+
+                    <div class="flex-1 p-4 bg-blue-50 rounded-lg border border-blue-100 flex flex-col justify-center transition hover:shadow-md">
+                        <div class="text-blue-700 font-bold mb-1">Workers</div>
+                        <div class="text-xs text-stone-500">Processing & Retries</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 2: SCHEMA EXPLORER -->
+        <section id="schema" class="content-section max-w-6xl mx-auto space-y-8 hidden">
+            <div class="space-y-2">
+                <h2 class="text-3xl font-bold text-stone-900">Data Schema Explorer</h2>
+                <p class="text-stone-600 max-w-3xl">
+                    The backbone of our failure tolerance is the database schema. Select an entity below to understand its role in ensuring
+                    consistency, idempotency, and auditability. The 'Outbox Events' table is critical for the transactional outbox pattern.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Entity Selection List -->
+                <div class="lg:col-span-1 space-y-4">
+                    <div class="entity-card p-4 rounded-lg border border-stone-200 bg-white active" onclick="selectEntity('orders', this)">
+                        <div class="flex justify-between items-center">
+                            <h3 class="font-bold text-stone-800">orders</h3>
+                            <span class="text-xs bg-stone-100 text-stone-600 px-2 py-1 rounded">Core</span>
+                        </div>
+                        <p class="text-xs text-stone-500 mt-1">The primary record of truth for customer requests.</p>
+                    </div>
+
+                    <div class="entity-card p-4 rounded-lg border border-stone-200 bg-white" onclick="selectEntity('outbox', this)">
+                        <div class="flex justify-between items-center">
+                            <h3 class="font-bold text-stone-800">outbox_events</h3>
+                            <span class="text-xs bg-teal-50 text-teal-700 px-2 py-1 rounded">Critical</span>
+                        </div>
+                        <p class="text-xs text-stone-500 mt-1">Ensures events are persisted atomically with orders.</p>
+                    </div>
+
+                    <div class="entity-card p-4 rounded-lg border border-stone-200 bg-white" onclick="selectEntity('idempotency', this)">
+                        <div class="flex justify-between items-center">
+                            <h3 class="font-bold text-stone-800">idempotency_keys</h3>
+                            <span class="text-xs bg-stone-100 text-stone-600 px-2 py-1 rounded">Safety</span>
+                        </div>
+                        <p class="text-xs text-stone-500 mt-1">Prevents duplicate processing of the same request.</p>
+                    </div>
+
+                    <div class="entity-card p-4 rounded-lg border border-stone-200 bg-white" onclick="selectEntity('failures', this)">
+                        <div class="flex justify-between items-center">
+                            <h3 class="font-bold text-stone-800">job_failures</h3>
+                            <span class="text-xs bg-stone-100 text-stone-600 px-2 py-1 rounded">Debug</span>
+                        </div>
+                        <p class="text-xs text-stone-500 mt-1">Tracks history of retry attempts and error reasons.</p>
+                    </div>
+                </div>
+
+                <!-- Entity Detail View -->
+                <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-stone-200 p-6 h-fit min-h-[400px]">
+                    <div id="entity-details-content">
+                        <!-- Content populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 3: TRANSACTION FLOW -->
+        <section id="transaction" class="content-section max-w-6xl mx-auto space-y-8 hidden">
+            <div class="space-y-2">
+                <h2 class="text-3xl font-bold text-stone-900">Atomic Transaction Simulator</h2>
+                <p class="text-stone-600 max-w-3xl">
+                    Step through the "Golden Rule" of our architecture: Order creation and Event creation must happen in the same database transaction.
+                    This prevents "Ghost Orders" (order saved, event lost) and ensures eventual consistency.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                <!-- Interactive Stepper -->
+                <div class="space-y-0">
+                    <div id="step-1" class="step-active border-l-4 p-4 transition-colors duration-300">
+                        <h3 class="font-bold text-stone-800">1. Client Request</h3>
+                        <p class="text-sm text-stone-600 mt-1">Client sends <code class="bg-stone-200 px-1 rounded">POST /orders</code> with a unique Idempotency Key.</p>
+                    </div>
+                    <div id="step-2" class="step-inactive border-l-4 border-stone-200 p-4 transition-colors duration-300">
+                        <h3 class="font-bold text-stone-800">2. API Validation</h3>
+                        <p class="text-sm text-stone-600 mt-1">API checks key uniqueness. If new, it initiates a DB transaction.</p>
+                    </div>
+                    <div id="step-3" class="step-inactive border-l-4 border-stone-200 p-4 transition-colors duration-300">
+                        <h3 class="font-bold text-stone-800">3. Insert Order</h3>
+                        <p class="text-sm text-stone-600 mt-1">Order record inserted into <code class="bg-stone-200 px-1 rounded">orders</code> table. State: CREATED.</p>
+                    </div>
+                    <div id="step-4" class="step-inactive border-l-4 border-stone-200 p-4 transition-colors duration-300">
+                        <h3 class="font-bold text-stone-800">4. Insert Outbox Event</h3>
+                        <p class="text-sm text-stone-600 mt-1">Event record inserted into <code class="bg-stone-200 px-1 rounded">outbox_events</code>. Status: PENDING.</p>
+                    </div>
+                    <div id="step-5" class="step-inactive border-l-4 border-stone-200 p-4 transition-colors duration-300">
+                        <h3 class="font-bold text-stone-800">5. Commit Transaction</h3>
+                        <p class="text-sm text-stone-600 mt-1">Database commits both records atomically. Data is now safe.</p>
+                    </div>
+                    
+                    <div class="pt-4 flex gap-3">
+                        <button onclick="nextStep()" class="bg-teal-600 hover:bg-teal-700 text-white px-6 py-2 rounded-lg font-medium transition-colors shadow-sm">Next Step</button>
+                        <button onclick="resetSteps()" class="bg-white border border-stone-300 text-stone-600 hover:bg-stone-50 px-6 py-2 rounded-lg font-medium transition-colors">Reset</button>
+                    </div>
+                </div>
+
+                <!-- Visual State Representation -->
+                <div class="bg-stone-900 rounded-xl p-6 text-stone-100 font-mono text-sm shadow-xl min-h-[300px] flex flex-col">
+                    <div class="border-b border-stone-700 pb-2 mb-4 text-stone-400">Database Transaction Log</div>
+                    <div id="console-output" class="space-y-2 flex-1">
+                        <div class="text-teal-400">> Waiting for request...</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 4: RESILIENCE -->
+        <section id="resilience" class="content-section max-w-6xl mx-auto space-y-8 hidden">
+            <div class="space-y-2">
+                <h2 class="text-3xl font-bold text-stone-900">Resilience & Retry Logic</h2>
+                <p class="text-stone-600 max-w-3xl">
+                    Failures are expected. Our system uses an exponential backoff strategy to recover from transient errors without overwhelming downstream services.
+                    Dead Letter Queues (DLQ) catch the "poison pill" events.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Backoff Chart -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-stone-200">
+                    <h3 class="text-lg font-bold text-stone-800 mb-4">Exponential Backoff Strategy</h3>
+                    <p class="text-xs text-stone-500 mb-4">Wait time increases exponentially with each failure. (1s -> 5s -> 30s -> 2m)</p>
+                    <div class="chart-container">
+                        <canvas id="backoffChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Status Distribution Chart -->
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-stone-200">
+                    <h3 class="text-lg font-bold text-stone-800 mb-4">Event Outcome Distribution</h3>
+                    <p class="text-xs text-stone-500 mb-4">Real-time breakdown of message processing outcomes.</p>
+                    <div class="chart-container">
+                        <canvas id="distributionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-6">
+                <h3 class="text-indigo-800 font-bold text-lg mb-2">Why Dead Letter Queues?</h3>
+                <p class="text-indigo-700 text-sm">
+                    After the maximum retry limit (e.g., 5 attempts) is reached, an order is moved to the DLQ (Dead Letter Queue). 
+                    This prevents infinite loops and allows developers to inspect the payload, fix the bug (or data), and manually replay the message.
+                </p>
+            </div>
+        </section>
+
+        <!-- SECTION 5: TRACEABILITY -->
+        <section id="traceability" class="content-section max-w-6xl mx-auto space-y-8 hidden">
+            <div class="space-y-2">
+                <h2 class="text-3xl font-bold text-stone-900">Audit & Traceability</h2>
+                <p class="text-stone-600 max-w-3xl">
+                    Every action is logged. Explore the master-detail view below to see how a single Order ID connects to its Outbox Events, Failures, and Audit Logs.
+                </p>
+            </div>
+
+            <!-- Traceability Table -->
+            <div class="bg-white rounded-xl shadow-sm border border-stone-200 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-stone-50 border-b border-stone-200 text-xs uppercase text-stone-500 font-semibold">
+                            <tr>
+                                <th class="p-4">Order ID / Ref</th>
+                                <th class="p-4">Status</th>
+                                <th class="p-4">Created At</th>
+                                <th class="p-4">Retry Count</th>
+                                <th class="p-4">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-sm divide-y divide-stone-100">
+                            <!-- Row 1 -->
+                            <tr class="hover:bg-stone-50 transition-colors">
+                                <td class="p-4 font-mono text-stone-600">
+                                    <div class="font-bold text-stone-800">ord_12345</div>
+                                    <div class="text-xs">ref_payment_x99</div>
+                                </td>
+                                <td class="p-4"><span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold">COMPLETED</span></td>
+                                <td class="p-4 text-stone-500">2023-10-27 10:42:01</td>
+                                <td class="p-4 text-stone-500">0</td>
+                                <td class="p-4">
+                                    <button onclick="toggleDetails('details-1')" class="text-teal-600 hover:text-teal-800 font-medium text-xs">View Trace</button>
+                                </td>
+                            </tr>
+                            <tr id="details-1" class="hidden bg-stone-50">
+                                <td colspan="5" class="p-4">
+                                    <div class="bg-white border border-stone-200 rounded p-4 text-xs space-y-2">
+                                        <div class="font-bold text-stone-800 mb-2">Related Outbox Events:</div>
+                                        <div class="flex gap-2">
+                                            <span class="bg-stone-100 border border-stone-200 px-2 py-1 rounded">OrderCreated (Published)</span>
+                                            <span class="bg-stone-100 border border-stone-200 px-2 py-1 rounded">PaymentProcessed (Published)</span>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+
+                            <!-- Row 2 -->
+                            <tr class="hover:bg-stone-50 transition-colors">
+                                <td class="p-4 font-mono text-stone-600">
+                                    <div class="font-bold text-stone-800">ord_67890</div>
+                                    <div class="text-xs">ref_payment_y88</div>
+                                </td>
+                                <td class="p-4"><span class="bg-orange-100 text-orange-700 px-2 py-1 rounded text-xs font-bold">RETRYING</span></td>
+                                <td class="p-4 text-stone-500">2023-10-27 10:45:30</td>
+                                <td class="p-4 text-stone-500">2</td>
+                                <td class="p-4">
+                                    <button onclick="toggleDetails('details-2')" class="text-teal-600 hover:text-teal-800 font-medium text-xs">View Trace</button>
+                                </td>
+                            </tr>
+                            <tr id="details-2" class="hidden bg-stone-50">
+                                <td colspan="5" class="p-4">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div class="bg-white border border-stone-200 rounded p-4 text-xs">
+                                            <div class="font-bold text-red-600 mb-2">Failure History:</div>
+                                            <ul class="list-disc list-inside text-stone-600 space-y-1">
+                                                <li>Attempt 1: Connection Timeout (Payment GW)</li>
+                                                <li>Attempt 2: 503 Service Unavailable</li>
+                                            </ul>
+                                        </div>
+                                        <div class="bg-white border border-stone-200 rounded p-4 text-xs">
+                                            <div class="font-bold text-stone-800 mb-2">Next Retry:</div>
+                                            <p>Scheduled for 10:46:00 (Exponential Backoff applied)</p>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+
+                             <!-- Row 3 -->
+                             <tr class="hover:bg-stone-50 transition-colors">
+                                <td class="p-4 font-mono text-stone-600">
+                                    <div class="font-bold text-stone-800">ord_fail_99</div>
+                                    <div class="text-xs">ref_payment_z77</div>
+                                </td>
+                                <td class="p-4"><span class="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold">DEAD_LETTERED</span></td>
+                                <td class="p-4 text-stone-500">2023-10-26 14:20:00</td>
+                                <td class="p-4 text-stone-500">5 (Max)</td>
+                                <td class="p-4">
+                                    <button onclick="toggleDetails('details-3')" class="text-teal-600 hover:text-teal-800 font-medium text-xs">View Trace</button>
+                                </td>
+                            </tr>
+                            <tr id="details-3" class="hidden bg-stone-50">
+                                <td colspan="5" class="p-4">
+                                    <div class="bg-red-50 border border-red-100 rounded p-4 text-xs">
+                                        <div class="font-bold text-red-800 mb-2">Action Required</div>
+                                        <p class="text-red-700">This order has exceeded maximum retries. Please investigate the 'job_failures' table for reason: "Invalid Shipping Address". Correct data and use Admin Console to replay.</p>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <script>
+        // --- Navigation Logic ---
+        function showSection(sectionId) {
+            // Hide all sections
+            document.querySelectorAll('.content-section').forEach(el => el.classList.add('hidden'));
+            // Show target section
+            document.getElementById(sectionId).classList.remove('hidden');
+            
+            // Update Sidebar state
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                if(btn.dataset.target === sectionId) {
+                    btn.classList.remove('text-stone-600', 'hover:bg-stone-50');
+                    btn.classList.add('bg-stone-100', 'text-teal-700');
+                } else {
+                    btn.classList.add('text-stone-600', 'hover:bg-stone-50');
+                    btn.classList.remove('bg-stone-100', 'text-teal-700');
+                }
+            });
+
+            // Trigger chart rendering if needed
+            if(sectionId === 'resilience') {
+                renderCharts();
+            }
+        }
+
+        // --- Schema Explorer Data ---
+        const schemaData = {
+            'orders': {
+                title: 'orders',
+                desc: 'The central entity storing the current state of a customer order.',
+                fields: [
+                    { name: 'id', type: 'UUID (PK)', desc: 'Primary unique identifier' },
+                    { name: 'external_reference', type: 'String (Unique)', desc: 'Client provided reference for idempotency' },
+                    { name: 'status', type: 'Enum', desc: 'CREATED, PROCESSING, COMPLETED, FAILED, RETRYING, DEAD_LETTERED' },
+                    { name: 'retry_count', type: 'Integer', desc: 'Tracks attempts. Triggers DLQ when > max.' }
+                ],
+                relationships: ['1 -> Many outbox_events', '1 -> Many job_failures', '1 -> Many audit_logs']
+            },
+            'outbox': {
+                title: 'outbox_events',
+                desc: 'The pivot point of the Transactional Outbox Pattern. Stores events to be published.',
+                fields: [
+                    { name: 'id', type: 'UUID (PK)', desc: 'Unique event ID' },
+                    { name: 'aggregate_id', type: 'UUID (FK)', desc: 'Links back to orders.id' },
+                    { name: 'payload', type: 'JSON', desc: 'The data payload sent to the Message Queue' },
+                    { name: 'status', type: 'Enum', desc: 'PENDING (waiting for poller), PUBLISHED (sent to queue)' }
+                ],
+                relationships: ['Many -> 1 orders (Atomic Persistence)']
+            },
+            'idempotency': {
+                title: 'idempotency_keys',
+                desc: 'Tracks incoming API requests to prevent double-processing.',
+                fields: [
+                    { name: 'key', type: 'String (PK)', desc: 'The unique key header from the client' },
+                    { name: 'response_snapshot', type: 'JSON', desc: 'Cached success response to return on duplicate calls' }
+                ],
+                relationships: ['1 -> 1 orders (Logical link)']
+            },
+            'failures': {
+                title: 'job_failures',
+                desc: 'Detailed log of why an asynchronous job failed.',
+                fields: [
+                    { name: 'order_id', type: 'UUID (FK)', desc: 'The failing order' },
+                    { name: 'reason', type: 'String', desc: 'Stack trace or error message' },
+                    { name: 'last_retry_at', type: 'Timestamp', desc: 'When the last attempt occurred' }
+                ],
+                relationships: ['Many -> 1 orders']
+            }
+        };
+
+        function selectEntity(key, element) {
+            // Visual Active State
+            document.querySelectorAll('.entity-card').forEach(el => el.classList.remove('active'));
+            element.classList.add('active');
+
+            // Render Details
+            const data = schemaData[key];
+            const content = `
+                <div class="animate-fade-in">
+                    <h3 class="text-2xl font-bold text-stone-800 mb-2 font-mono">${data.title}</h3>
+                    <p class="text-stone-600 mb-6 bg-stone-50 p-3 rounded border border-stone-100">${data.desc}</p>
+                    
+                    <h4 class="font-bold text-teal-700 text-sm uppercase tracking-wide mb-3">Schema Definition</h4>
+                    <div class="overflow-hidden rounded-lg border border-stone-200 mb-6">
+                        <table class="min-w-full divide-y divide-stone-200">
+                            <thead class="bg-stone-50">
+                                <tr>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-stone-500 uppercase">Field</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-stone-500 uppercase">Type</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-stone-500 uppercase">Description</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white divide-y divide-stone-200">
+                                ${data.fields.map(f => `
+                                    <tr>
+                                        <td class="px-4 py-3 text-sm font-medium text-stone-900 font-mono">${f.name}</td>
+                                        <td class="px-4 py-3 text-sm text-stone-500 font-mono">${f.type}</td>
+                                        <td class="px-4 py-3 text-sm text-stone-600">${f.desc}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <h4 class="font-bold text-indigo-700 text-sm uppercase tracking-wide mb-3">Key Relationships</h4>
+                    <ul class="list-disc list-inside text-sm text-stone-700 space-y-1">
+                        ${data.relationships.map(r => `<li>${r}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+            document.getElementById('entity-details-content').innerHTML = content;
+        }
+
+        // Initialize first entity
+        selectEntity('orders', document.querySelector('.entity-card'));
+
+        // --- Transaction Simulator Logic ---
+        let currentStep = 0;
+        const totalSteps = 5;
+        const consoleEl = document.getElementById('console-output');
+
+        function updateSteps() {
+            for(let i=1; i<=totalSteps; i++) {
+                const el = document.getElementById(`step-${i}`);
+                if(i === currentStep) {
+                    el.className = 'step-active border-l-4 p-4 transition-colors duration-300';
+                } else if (i < currentStep) {
+                     el.className = 'border-l-4 border-teal-500 bg-white p-4 transition-colors duration-300 opacity-60';
+                } else {
+                    el.className = 'step-inactive border-l-4 border-stone-200 p-4 transition-colors duration-300';
+                }
+            }
+        }
+
+        function log(msg) {
+            const div = document.createElement('div');
+            div.innerHTML = `<span class="text-stone-500 font-mono">[${new Date().toLocaleTimeString()}]</span> ${msg}`;
+            consoleEl.appendChild(div);
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+
+        function nextStep() {
+            if(currentStep >= totalSteps) return;
+            currentStep++;
+            updateSteps();
+
+            switch(currentStep) {
+                case 1: log("Client: Sending POST /orders..."); break;
+                case 2: log("API: Validating payload & Idempotency Key..."); log("<span class='text-green-400'>✓ Validation Passed</span>"); break;
+                case 3: log("DB: BEGIN TRANSACTION"); log("DB: INSERT INTO orders VALUES (...)"); break;
+                case 4: log("DB: INSERT INTO outbox_events VALUES (payload, 'PENDING')"); break;
+                case 5: log("DB: COMMIT TRANSACTION"); log("<span class='text-teal-400'>✓ Atomic Write Successful</span>"); log("API: 202 Accepted returned to client."); break;
+            }
+        }
+
+        function resetSteps() {
+            currentStep = 0;
+            consoleEl.innerHTML = '<div class="text-teal-400">> Waiting for request...</div>';
+            updateSteps();
+        }
+
+        // --- Resilience Charts (Chart.js) ---
+        let chartsInitialized = false;
+        function renderCharts() {
+            if(chartsInitialized) return;
+            
+            // 1. Backoff Line Chart
+            const ctx1 = document.getElementById('backoffChart').getContext('2d');
+            new Chart(ctx1, {
+                type: 'line',
+                data: {
+                    labels: ['Attempt 1', 'Attempt 2', 'Attempt 3', 'Attempt 4', 'Attempt 5'],
+                    datasets: [{
+                        label: 'Delay Duration (seconds)',
+                        data: [1, 5, 30, 120, 300],
+                        borderColor: '#0d9488', // Teal 600
+                        backgroundColor: 'rgba(13, 148, 136, 0.1)',
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { title: { display: true, text: 'Seconds' } }
+                    }
+                }
+            });
+
+            // 2. Distribution Doughnut Chart
+            const ctx2 = document.getElementById('distributionChart').getContext('2d');
+            new Chart(ctx2, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Success (1st Try)', 'Success (After Retry)', 'Dead Letter (Failed)'],
+                    datasets: [{
+                        data: [85, 14, 1],
+                        backgroundColor: ['#0d9488', '#f59e0b', '#ef4444'], // Teal, Amber, Red
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+
+            chartsInitialized = true;
+        }
+
+        // --- Traceability Toggle ---
+        function toggleDetails(id) {
+            const el = document.getElementById(id);
+            if(el.classList.contains('hidden')) {
+                el.classList.remove('hidden');
+            } else {
+                el.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,30 +1,97 @@
-# Failure Scenarios
+# 2️⃣ Failure Scenarios (Minimum 5 — Realistic, Not Hypothetical)
 
-## 1. Client Retry
-**Cause:** Network timeout  
-**Risk:** Duplicate orders  
-
-**Handling:**
-- Client sends `Idempotency-Key`
-- Server stores request hash
-- Same key returns same order
+These are non-optional. Your system must behave correctly in all of them.
 
 ---
 
-## 2. Payment Success, DB Failure
-**Cause:** DB crash after payment confirmation  
+## Failure #1: Server Crash After DB Commit
 
-**Handling:**
-- Order initially marked `PENDING`
-- Payment event stored in outbox
-- Background worker retries persistence
+### Scenario
+- Order is saved
+- Response never reaches client
+- Client retries request
+
+### Expected Behavior
+- Same order returned
+- No duplicate rows
+- Idempotency key resolves correctly
+
+### Bug if ignored
+- Double orders
+- Broken billing
+- Phantom requests
 
 ---
 
-## 3. Message Broker Down
-**Cause:** Kafka/RabbitMQ outage  
+## Failure #2: Worker Crash Mid-Processing
 
-**Handling:**
-- Events written to outbox table
-- Publisher retries when broker recovers
+### Scenario
+- Order marked `PROCESSING`
+- Worker crashes before completion
+
+### Expected Behavior
+- Order remains recoverable
+- Retry resumes safely
+- No side-effects duplicated
+
+### Bug if ignored
+- Orders stuck forever
+- Manual DB edits (death sentence)
+
+---
+
+## Failure #3: Duplicate Job Execution
+
+### Scenario
+- Queue delivers same job twice
+- Worker processes both
+
+### Expected Behavior
+- Second execution is a no-op
+- Order remains consistent
+
+### Bug if ignored
+- Double charges
+- Duplicate fulfillment
+- Silent corruption
+
+---
+
+## Failure #4: External Service Timeout
+
+### Scenario
+- Payment / fulfillment times out
+- Result unknown
+
+### Expected Behavior
+- Order **NOT** marked completed
+- Retry happens
+- Side-effect remains idempotent
+
+### Bug if ignored
+- “Paid but not delivered” or worse: delivered twice
+
+---
+
+## Failure #5: Outbox Event Published Twice
+
+### Scenario
+- Outbox worker crashes after publish
+- Same event republished on restart
+
+### Expected Behavior
+- Consumer ignores duplicate
+- Order state unchanged
+
+### Bug if ignored
+- Ghost processing
+- Event storms
+- Data divergence
+
+---
+
+## Optional (If You Want to Look Serious)
+- DB temporary read-only
+- Queue backlog surge
+- Clock skew / delayed retries
 

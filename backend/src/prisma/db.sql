@@ -1,0 +1,34 @@
+orders (
+  id UUID PRIMARY KEY,
+  status ENUM(
+    'CREATED',
+    'PROCESSING',
+    'COMPLETED',
+    'FAILED',
+    'RETRYING'
+  ) NOT NULL,
+
+  retry_count INT NOT NULL DEFAULT 0, 
+
+  payload JSONB NOT NULL,
+
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP NOT NULL
+)
+
+outbox_events (
+  id UUID PRIMARY KEY,
+  aggregate_id UUID NOT NULL, -- order.id
+  event_type TEXT NOT NULL,   -- 'order.created'
+  payload JSONB NOT NULL,
+
+  processed BOOLEAN NOT NULL DEFAULT false,
+
+  created_at TIMESTAMP NOT NULL
+)
+
+idempotency_keys (
+  key TEXT PRIMARY KEY,
+  response JSONB NOT NULL,
+  created_at TIMESTAMP NOT NULL
+)
